@@ -27,46 +27,6 @@ void initializeI2C() {
     #endif
 }
 
-void initializeDMP() {
-
-  devStatus = mpu.dmpInitialize();
-
-    // supply your own gyro offsets here, scaled for min sensitivity
-    mpu.setXGyroOffset(220); //Gyroscope: X = -3396 | Y = 53 | Z = 45
-    mpu.setYGyroOffset(76);
-    mpu.setZGyroOffset(-85);
-    mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
-
-    // make sure it worked (returns 0 if so)
-    if (devStatus == 0) {
-        // turn on the DMP, now that it's ready
-        moduleSerial.println(F("Enabling DMP..."));
-        mpu.setDMPEnabled(true);
-
-        // enable Arduino interrupt detection
-        moduleSerial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-        moduleSerial.print(digitalPinToInterrupt(INTERRUPT_PIN));
-        moduleSerial.println(F(")..."));
-        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
-        mpuIntStatus = mpu.getIntStatus();
-
-        // set our DMP Ready flag so the main loop() function knows it's okay to use it
-        moduleSerial.println(F("DMP ready! Waiting for first interrupt..."));
-        dmpReady = true;
-
-        // get expected DMP packet size for later comparison
-        packetSize = mpu.dmpGetFIFOPacketSize();
-    } else {
-        // ERROR!
-        // 1 = initial memory load failed
-        // 2 = DMP configuration updates failed
-        // (if it's going to break, usually the code will be 1)
-        moduleSerial.print(F("DMP Initialization failed (code "));
-        moduleSerial.print(devStatus);
-        moduleSerial.println(F(")"));
-    }
-}
-
 void setup() {
     
     // Initialize serial pins
@@ -82,9 +42,11 @@ void setup() {
 
     delay(10);
 
-    // initialize device
+    // initialize i2c bus devices
     moduleSerial.println(F("Initializing I2C devices..."));
+
     mpu.initialize();
+    
     pinMode(INTERRUPT_PIN, INPUT);
 
     // verify connection
@@ -94,8 +56,8 @@ void setup() {
     // load and configure the DMP
     moduleSerial.println(F("Initializing DMP..."));
 
-    initializeDMP();
-    
+    // initialize IMU, print and then loop if it fails
+    if(!initializeDMP()) { moduleSerial.println(F("IMU initialization failed...")); while(1); }
     
 }
 
@@ -105,6 +67,7 @@ void setup() {
 // ================================================================
 
 void loop() {
+  
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
 
